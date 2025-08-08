@@ -1,90 +1,50 @@
 <!doctype html>
 <html lang="es" xmlns:th="http://www.thymeleaf.org">
-
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>SplitEasy — Grupos</title>
-  <link rel="stylesheet" th:href="@{/styles.css}" href="/styles.css">
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>Mis grupos — SplitEasy</title>
+  <link rel="stylesheet" th:href="@{/styles.css}">
 </head>
-
 <body>
-  <div class="container">
-    <header class="header">
-      <div class="brand">
-        <a href="/" class="logo" title="Inicio" style="display:block"></a>
-        <div>
-          <h1>SplitEasy</h1>
-          <small>Gastos compartidos, sin drama</small>
-        </div>
+<div class="container">
+  <header class="header">
+    <div class="brand">
+      <a href="/" class="logo" title="Inicio" style="display:block"></a>
+      <div>
+        <h1>Mis grupos</h1>
+        <small>Tu espacio personal (por sesión)</small>
       </div>
-      <div class="theme-toggle">
-        <span>🌞</span>
-        <label class="switch">
-          <input id="themeSwitch" type="checkbox">
-          <span class="slider"></span>
-        </label>
-        <span>🌙</span>
-      </div>
-    </header>
-
-    <div class="grid grid-2">
-      <section class="card">
-        <h2 class="section-title">Tus grupos</h2>
-
-        <div th:if="${#lists.isEmpty(groups)}">Aún no creaste ninguno. Usá el formulario de la derecha ✨</div>
-        <div th:unless="${#lists.isEmpty(groups)}">
-          <table class="table">
-            <thead>
-              <tr>
-                <th>Nombre</th>
-                <th style="width:1%"></th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr th:each="g : ${groups}">
-                <td>
-                  <a class="btn btn-ghost btn-sm" th:href="@{|/g/${g.slug}|}" th:text="${g.name}">Grupo</a>
-                </td>
-                <td>
-                  <form th:action="@{|/groups/${g.slug}/delete|}" method="post"
-                    onsubmit="return confirm('¿Eliminar el grupo &quot;'+this.parentElement.parentElement.querySelector('td a').textContent+'&quot; y TODOS sus datos?');">
-                    <button class="btn btn-danger btn-sm">🗑️</button>
-                  </form>
-                </td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-      </section>
-
-      <section class="card">
-        <h2 class="section-title">Crear nuevo grupo</h2>
-        <form method="post" action="/groups" class="grid">
-          <input type="text" name="name" placeholder="Nombre del grupo (ej. Viaje a Bariloche)" required />
-          <div class="row">
-            <button class="btn">Crear grupo</button>
-          </div>
-        </form>
-      </section>
     </div>
+  </header>
 
-    <p class="footer">Hecho con ❤️ por cotibodereau</p>
-  </div>
+  <section class="card">
+    <h2 class="section-title">Crear un grupo</h2>
+    <form action="/groups" method="post" class="row">
+      <input name="name" placeholder="Nombre del grupo" required>
+      <button class="btn">Crear</button>
+    </form>
+  </section>
 
-  <script>
-    // Tema persistente (igual que antes)
-    const root = document.documentElement;
-    const key = 'se_theme';
-    const saved = localStorage.getItem(key);
-    if (saved === 'dark') { root.setAttribute('data-theme', 'dark'); }
-    const sw = document.getElementById('themeSwitch');
-    if (sw) sw.checked = root.getAttribute('data-theme') === 'dark';
-    sw?.addEventListener('change', e => {
-      if (e.target.checked) { root.setAttribute('data-theme', 'dark'); localStorage.setItem(key, 'dark'); }
-      else { root.removeAttribute('data-theme'); localStorage.setItem(key, 'light'); }
-    });
-  </script>
+  <section class="card" style="margin-top:16px">
+    <h2 class="section-title">Tus grupos</h2>
+    <div th:if="${#lists.isEmpty(groups)}">Todavía no creaste grupos.</div>
+    <div th:unless="${#lists.isEmpty(groups)}">
+      <table class="table">
+        <thead><tr><th>Nombre</th><th>Link</th></tr></thead>
+        <tbody>
+        <tr th:each="g : ${groups}">
+          <td th:text="${g.name}">Grupo</td>
+          <td>
+            <a class="link" th:href="@{|/g/${g.slug}|}" th:text="@{|/g/${g.slug}|}">/g/abc</a>
+          </td>
+        </tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <p class="footer">Hecho con ❤️ por cotibodereau</p>
+</div>
 </body>
-
 </html>
