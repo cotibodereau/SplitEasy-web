@@ -1,0 +1,172 @@
+package com.example.spliteasyweb.web;
+
+import com.example.spliteasyweb.model.ExpenseEntity;
+import com.example.spliteasyweb.model.GroupEntity;
+import com.example.spliteasyweb.model.PersonEntity;
+import com.example.spliteasyweb.repo.ExpenseRepo;
+import com.example.spliteasyweb.repo.GroupRepo;
+import com.example.spliteasyweb.repo.PersonRepo;
+import com.example.spliteasyweb.service.SettlementService;
+import org.springframework.stereotype.Controller;
+import org.springframework.transaction.annotation.Transactional;
+import org.springframework.ui.Model;
+import org.springframework.web.bind.annotation.*;
+
+import java.math.BigDecimal;
+import java.text.Normalizer;
+import java.time.LocalDate;
+import java.util.*;
+import java.util.stream.Collectors;
+
+@Controller
+public class GroupController {
+
+    private final GroupRepo groupRepo;
+    private final PersonRepo personRepo;
+    private final ExpenseRepo expenseRepo;
+    private final SettlementService settlementService;
+
+    public GroupController(GroupRepo groupRepo,
+                           PersonRepo personRepo,
+                           ExpenseRepo expenseRepo,
+                           SettlementService settlementService) {
+        this.groupRepo = groupRepo;
+        this.personRepo = personRepo;
+        this.expenseRepo = expenseRepo;
+        this.settlementService = settlementService;
+    }
+
+    // ==========================
+    // Dashboard del grupo
+    // ==========================
+    @GetMapping("/g/{slug}")
+    public String dashboard(@PathVariable String slug, Model model) {
+        GroupEntity g = groupRepo.findBySlug(slug).orElseThrow();
+        var people = personRepo.findByGroupIdOrderByNameAsc(g.getId());
+        var expenses = expenseRepo.findByGroupIdOrderByDateDescIdDesc(g.getId());
+
+        var balances = settlementService.balances(expenses);
+        var txs = settlementService.settle(balances);
+
+        model.addAttribute("g", g);
+        model.addAttribute("people", people);
+        model.addAttribute("expenses", expenses); // <- nombre que usa el template
+        model.addAttribute("balances", balances);
+        model.addAttribute("txs", txs);
+        return "group";
+    }
+
+    // ==========================
+    // Personas
+    // ==========================
+    @PostMapping("/g/{slug}/people")
+    @Transactional
+    public String addPerson(@PathVariable String slug,
+                            @RequestParam String name) {
+        GroupEntity g = groupRepo.findBySlug(slug).orElseThrow();
+        String trimmed = name == null ? "" : name.trim();
+        if (trimmed.isEmpty()) return "redirect:/g/" + slug;
+
+        var existing = personRepo.findByGroupIdOrderByNameAsc(g.getId());
+        boolean exists = existing.stream().anyMatch(p -> norm(p.getName()).equals(norm(trimmed)));
+        if (!exists) {
+            PersonEntity p = new PersonEntity();
+            p.setGroupId(g.getId());
+            p.setName(trimmed);
+            personRepo.save(p);
+        }
+        return "redirect:/g/" + slug;
+    }
+
+    @PostMapping("/g/{slug}/people/{id}/delete")
+    @Transactional
+    public String deletePerson(@PathVariable String slug,
+                               @PathVariable Long id) {
+        personRepo.deleteById(id);
+        return "redirect:/g/" + slug;
+    }
+
+    // ==========================
+    // Gastos
+    // ==========================
+    @PostMapping("/g/{slug}/expenses")
+    @Transactional
+    public String addExpense(@PathVariable String slug,
+                             @RequestParam String title,
+                             @RequestParam String amount,
+                             @RequestParam(required = false) List<String> participants, // viene como inputs múltiples
+                             @RequestParam(required = false) String payers) {           // viene como CSV en un input
+        GroupEntity g = groupRepo.findBySlug(slug).orElseThrow();
+
+        var people = personRepo.findByGroupIdOrderByNameAsc(g.getId());
+        Map<String, String> canon = canonicalMap(people); // norm(name)->Name guardado
+
+        String participantsCsv = listToCsv(participants);
+        String participantsFixed = joinUniqueCanonical(participantsCsv, canon);
+        String payersFixed = joinUniqueCanonical(payers, canon);
+
+        ExpenseEntity e = new ExpenseEntity();
+        e.setGroup(g);
+        e.setTitle(title == null ? "" : title.trim());
+        e.setAmount(safeBigDecimal(amount));
+        e.setDate(LocalDate.now());
+        e.setParticipantsCsv(participantsFixed);
+        e.setPayersCsv(payersFixed);
+
+        expenseRepo.save(e);
+        return "redirect:/g/" + slug;
+    }
+
+    @PostMapping("/g/{slug}/expenses/{id}/delete")
+    @Transactional
+    public String deleteExpense(@PathVariable String slug, @PathVariable Long id) {
+        expenseRepo.deleteById(id);
+        return "redirect:/g/" + slug;
+    }
+
+    @PostMapping("/g/{slug}/expenses/{id}/liquidate")
+    @Transactional
+    public String liquidateExpense(@PathVariable String slug, @PathVariable Long id) {
+        expenseRepo.deleteById(id);
+        return "redirect:/g/" + slug;
+    }
+
+    // ==========================
+    // Helpers
+    // ==========================
+    private static String norm(String s) {
+        if (s == null) return "";
+        String n = Normalizer.normalize(s, Normalizer.Form.NFD).replaceAll("\\p{M}+", "");
+        return n.toLowerCase(Locale.ROOT).trim();
+    }
+
+    private static Map<String, String> canonicalMap(List<PersonEntity> people) {
+        Map<String, String> map = new HashMap<>();
+        for (var p : people) map.put(norm(p.getName()), p.getName());
+        return map;
+    }
+
+    private static String listToCsv(List<String> list) {
+        if (list == null) return "";
+        return list.stream().filter(Objects::nonNull).map(String::trim).filter(s -> !s.isEmpty())
+                .collect(Collectors.joining(","));
+    }
+
+    private static String joinUniqueCanonical(String csv, Map<String, String> canon) {
+        if (csv == null) return "";
+        var set = new LinkedHashSet<String>();
+        for (String token : csv.split(",")) {
+            String raw = token.trim();
+            if (raw.isEmpty()) continue;
+            String key = norm(raw);
+            String canonical = canon.getOrDefault(key, raw);
+            if (set.stream().noneMatch(x -> norm(x).equals(norm(canonical)))) set.add(canonical);
+        }
+        return String.join(",", set);
+    }
+
+    private static BigDecimal safeBigDecimal(String s) {
+        try { return (s == null) ? BigDecimal.ZERO : new BigDecimal(s.trim()); }
+        catch (Exception ex) { return BigDecimal.ZERO; }
+    }
+}

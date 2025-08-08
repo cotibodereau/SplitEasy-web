@@ -1,0 +1,187 @@
+<!doctype html>
+<html lang="es" xmlns:th="http://www.thymeleaf.org">
+
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title th:text="${g.name} + ' — SplitEasy'">Grupo</title>
+  <link rel="stylesheet" th:href="@{/styles.css}">
+</head>
+
+<body>
+  <div class="container">
+    <header class="header">
+      <div class="brand">
+        <a href="/" class="logo" title="Volver al inicio" style="display:block"></a>
+        <div>
+          <h1 th:text="${g.name}">Grupo</h1>
+        </div>
+      </div>
+
+      <div class="header-actions">
+        <button class="btn btn-ghost btn-icon" id="shareBtn" title="Compartir link"
+          aria-label="Compartir link">🔗</button>
+
+        <a class="btn btn-ghost btn-sm" th:href="@{|/g/${g.slug}/export/expenses.csv|}"
+          title="Exportar gastos CSV">Gastos CSV</a>
+        <a class="btn btn-ghost btn-sm" th:href="@{|/g/${g.slug}/export/balances.csv|}"
+          title="Exportar saldos CSV">Saldos CSV</a>
+        <a class="btn btn-ghost btn-sm" th:href="@{|/g/${g.slug}/export/transfers.csv|}"
+          title="Exportar pagos CSV">Pagos CSV</a>
+
+        <div class="theme-toggle" title="Tema">
+          <span>🌞</span>
+          <label class="switch">
+            <input id="themeSwitch" type="checkbox"><span class="slider"></span>
+          </label>
+          <span>🌙</span>
+        </div>
+      </div>
+    </header>
+
+    <div class="grid grid-2">
+      <!-- Personas -->
+      <section class="card">
+        <h2 class="section-title">Personas</h2>
+        <form th:action="@{|/g/${g.slug}/people|}" method="post" class="row">
+          <input name="name" placeholder="Nombre (Ana / Martín)" required>
+          <button class="btn">Agregar</button>
+        </form>
+        <div class="hr"></div>
+
+        <div th:if="${#lists.isEmpty(people)}">Agregá al menos una persona.</div>
+        <div th:unless="${#lists.isEmpty(people)}">
+          <table class="table">
+            <thead>
+              <tr>
+                <th>Nombre</th>
+                <th style="width:1%"></th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr th:each="p : ${people}">
+                <td th:text="${p.name}">nombre</td>
+                <td style="text-align:right">
+                  <form th:action="@{|/g/${g.slug}/people/${p.id}/delete|}" method="post"
+                    th:attr="onsubmit=|return confirm('¿Eliminar a ${p.name} del grupo?');|">
+                    <button class="btn btn-danger btn-sm">🗑️</button>
+                  </form>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- Agregar gasto -->
+      <section class="card">
+        <h2 class="section-title">Agregar gasto</h2>
+        <form id="expenseForm" th:action="@{|/g/${g.slug}/expenses|}" method="post" class="grid">
+          <input name="title" placeholder="gasto (ej comida)" required>
+
+          <div class="row" style="width:100%">
+            <input id="payersInput" name="payers" placeholder="quién/es pagó/aron (ej: coti,marti)" required
+              style="flex:1" list="peoplelist">
+            <button type="button" class="btn btn-ghost btn-sm" id="btnPayersAll">Todos</button>
+            <button type="button" class="btn btn-ghost btn-sm" id="btnPayersNone">Ninguno</button>
+          </div>
+
+          <input name="amount" placeholder="monto" type="number" step="0.01" min="0.01" required>
+
+          <div class="row" style="width:100%">
+            <input id="participantsInput" placeholder="participantes (ana,coti,leo)" required style="flex:1"
+              list="peoplelist">
+            <button type="button" class="btn btn-ghost btn-sm" id="btnAll">Todos</button>
+            <button type="button" class="btn btn-ghost btn-sm" id="btnNone">Ninguno</button>
+            <button type="button" class="btn btn-ghost btn-sm" id="btnPlusPayers">+ Pagadores</button>
+          </div>
+
+          <datalist id="peoplelist">
+            <option th:each="p : ${people}" th:value="${p.name}"></option>
+          </datalist>
+
+          <div class="row">
+            <button class="btn">Agregar gasto</button>
+          </div>
+        </form>
+      </section>
+
+      <!-- Gastos -->
+      <section class="card" style="margin-top:16px">
+        <h2 class="section-title">Gastos</h2>
+        <div th:if="${#lists.isEmpty(expenses)}">No hay gastos cargados.</div>
+        <div th:unless="${#lists.isEmpty(expenses)}">
+          <table class="table">
+            <thead>
+              <tr>
+                <th>#</th>
+                <th>Gasto</th>
+                <th>Pagó</th>
+                <th>Monto</th>
+                <th>Participantes</th>
+                <th>Fecha</th>
+                <th>Acción</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr th:each="e,iter : ${expenses}">
+                <td th:text="${iter.index+1}">1</td>
+                <td th:text="${e.title}">comida</td>
+                <td th:text="${#strings.replace(e.payersCsv, ',', ', ')}">ana</td>
+                <td th:text="${#numbers.formatDecimal(e.amount,1,2)}">0.00</td>
+                <td th:text="${#strings.replace(e.participantsCsv, ',', ', ')}">ana,coti</td>
+                <td th:text="${e.date}">2025-08-08</td>
+                <td class="row">
+                  <form th:action="@{|/g/${g.slug}/expenses/${e.id}/liquidate|}" method="post"
+                    onsubmit="return confirm('¿Marcar como liquidado y eliminar este gasto?');">
+                    <button class="btn btn-ok btn-sm">✔️</button>
+                  </form>
+                  <form th:action="@{|/g/${g.slug}/expenses/${e.id}/delete|}" method="post"
+                    onsubmit="return confirm('¿Eliminar este gasto?');">
+                    <button class="btn btn-danger btn-sm">🗑️</button>
+                  </form>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- Saldos -->
+      <section class="card" style="margin-top:16px">
+        <h2 class="section-title">Saldos y liquidación</h2>
+        <div class="grid grid-2">
+          <div>
+            <h3 class="section-title">Saldos</h3>
+            <ul class="list" th:if="${#maps.isEmpty(balances)}">
+              <li>Sin saldos.</li>
+            </ul>
+            <ul class="list" th:unless="${#maps.isEmpty(balances)}">
+              <li th:each="entry : ${balances.entrySet()}"
+                th:text="${entry.key + ': ' + #numbers.formatDecimal(entry.value,1,2)}">ana: +0.00</li>
+            </ul>
+          </div>
+          <div th:if="${txs != null}">
+            <h3 class="section-title">Quién paga a quién</h3>
+            <ul class="list" th:if="${#lists.isEmpty(txs)}">
+              <li>Nada que liquidar.</li>
+            </ul>
+            <ul class="list" th:unless="${#lists.isEmpty(txs)}">
+              <li th:each="t : ${txs}"
+                th:text="${t.from() + ' → ' + t.to() + ': $' + #numbers.formatDecimal(t.amount(),1,2)}">
+                leo → ana: $123.45
+              </li>
+            </ul>
+          </div>
+        </div>
+      </section>
+
+      <p class="footer">Hecho con ❤️ por cotibodereau</p>
+    </div>
+  </div>
+
+  <!-- JS separado para que vuelvan a funcionar tema, compartir, TAB y botones -->
+  <script defer th:src="@{/app.js}"></script>
+</body>
+
+</html>
