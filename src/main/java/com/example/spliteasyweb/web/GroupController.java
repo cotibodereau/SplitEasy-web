@@ -21,77 +21,90 @@ import java.util.*;
 @Controller
 public class GroupController {
 
-    private final GroupRepo groupRepo;
-    private final PersonRepo personRepo;
-    private final ExpenseRepo expenseRepo;
+    private final GroupRepo groups;
+    private final PersonRepo people;
+    private final ExpenseRepo expenses;
     private final SettlementService settlementService;
 
-    public GroupController(GroupRepo groupRepo,
-                           PersonRepo personRepo,
-                           ExpenseRepo expenseRepo,
-                           SettlementService settlementService) {
-        this.groupRepo = groupRepo;
-        this.personRepo = personRepo;
-        this.expenseRepo = expenseRepo;
+    public GroupController(GroupRepo groups, PersonRepo people, ExpenseRepo expenses,
+            SettlementService settlementService) {
+        this.groups = groups;
+        this.people = people;
+        this.expenses = expenses;
         this.settlementService = settlementService;
     }
 
-    // ============ HOME: muestra mis grupos por sesión ============
-    @GetMapping("/")
-    public String home(HttpSession session, Model model) {
-        var myGroups = groupRepo.findByOwnerSessionOrderByIdDesc(session.getId());
-        model.addAttribute("groups", myGroups);
-        return "home";
-    }
+    // ========= HOME YA NO VA ACÁ ==============
+    // NADA con @GetMapping("/") en este controller
 
-    // Crear grupo (queda asociado a mi sesión)
+    // Crear grupo (desde el home)
     @PostMapping("/groups")
     @Transactional
     public String createGroup(@RequestParam String name, HttpSession session) {
+        String normalized = name == null ? "" : name.trim();
+        if (normalized.isEmpty())
+            return "redirect:/";
+
+        String base = slugify(normalized);
+        String slug = base;
+        int i = 1;
+        while (groups.existsBySlug(slug)) {
+            i++;
+            slug = base + "-" + i;
+        }
+
         GroupEntity g = new GroupEntity();
-        g.setName(name == null ? "Grupo" : name.trim());
-        g.setSlug(UUID.randomUUID().toString().replace("-", "").substring(0, 14));
-        g.setOwnerSession(session.getId());
-        groupRepo.save(g);
-        return "redirect:/g/" + g.getSlug();
+        g.setName(normalized);
+        g.setSlug(slug);
+        groups.save(g);
+
+        // guardar recientes en sesión (opcional)
+        @SuppressWarnings("unchecked")
+        var recent = (LinkedList<String>) Optional.ofNullable(session.getAttribute("recentGroups"))
+                .orElse(new LinkedList<String>());
+        recent.remove(slug);
+        recent.addFirst(slug);
+        while (recent.size() > 5)
+            recent.removeLast();
+        session.setAttribute("recentGroups", recent);
+
+        return "redirect:/g/" + slug;
     }
 
-    // ============ Dashboard del grupo compartido ============
+    // Dashboard del grupo
     @GetMapping("/g/{slug}")
     public String dashboard(@PathVariable String slug, Model model) {
-        GroupEntity g = groupRepo.findBySlug(slug).orElseThrow();
-        var people = personRepo.findByGroupIdOrderByNameAsc(g.getId());
-        var exps = expenseRepo.findByGroupIdOrderByDateDescIdDesc(g.getId());
+        GroupEntity g = groups.findBySlug(slug).orElseThrow();
+        var ppl = people.findByGroupIdOrderByNameAsc(g.getId());
+        var exps = expenses.findByGroupIdOrderByDateDescIdDesc(g.getId());
 
         var balances = settlementService.balances(exps);
         var txs = settlementService.settle(balances);
 
         model.addAttribute("g", g);
-        model.addAttribute("people", people);
+        model.addAttribute("people", ppl);
         model.addAttribute("expenses", exps);
         model.addAttribute("balances", balances);
         model.addAttribute("txs", txs);
         return "group";
     }
 
-    // ============ Personas ============
+    // Personas
     @PostMapping("/g/{slug}/people")
     @Transactional
-    public String addPerson(@PathVariable String slug,
-                            @RequestParam String name) {
-        GroupEntity g = groupRepo.findBySlug(slug).orElseThrow();
+    public String addPerson(@PathVariable String slug, @RequestParam String name) {
+        GroupEntity g = groups.findBySlug(slug).orElseThrow();
         String trimmed = name == null ? "" : name.trim();
-        if (trimmed.isEmpty()) return "redirect:/g/" + slug;
+        if (trimmed.isEmpty())
+            return "redirect:/g/" + slug;
 
-        var existing = personRepo.findByGroupIdOrderByNameAsc(g.getId());
-        boolean exists = existing.stream().anyMatch(p ->
-            norm(p.getName()).equals(norm(trimmed))
-        );
+        var existing = people.findByGroupIdOrderByNameAsc(g.getId());
+        boolean exists = existing.stream().anyMatch(p -> norm(p.getName()).equals(norm(trimmed)));
         if (!exists) {
             PersonEntity p = new PersonEntity();
             p.setGroupId(g.getId());
             p.setName(trimmed);
-            personRepo.save(p);
+            people.save(p);
         }
         return "redirect:/g/" + slug;
     }
@@ -99,22 +112,22 @@ public class GroupController {
     @PostMapping("/g/{slug}/people/{id}/delete")
     @Transactional
     public String deletePerson(@PathVariable String slug, @PathVariable Long id) {
-        personRepo.deleteById(id);
+        people.deleteById(id);
         return "redirect:/g/" + slug;
     }
 
-    // ============ Gastos ============
+    // Gastos
     @PostMapping("/g/{slug}/expenses")
     @Transactional
     public String addExpense(@PathVariable String slug,
-                             @RequestParam String title,
-                             @RequestParam String amount,
-                             @RequestParam(required = false) String participantsCsv,
-                             @RequestParam(required = false) String payersCsv) {
-        GroupEntity g = groupRepo.findBySlug(slug).orElseThrow();
+            @RequestParam String title,
+            @RequestParam String amount,
+            @RequestParam(required = false) String participantsCsv,
+            @RequestParam(required = false) String payersCsv) {
+        GroupEntity g = groups.findBySlug(slug).orElseThrow();
 
-        var people = personRepo.findByGroupIdOrderByNameAsc(g.getId());
-        Map<String, String> canon = canonicalMap(people);
+        var ppl = people.findByGroupIdOrderByNameAsc(g.getId());
+        Map<String, String> canon = canonicalMap(ppl);
 
         ExpenseEntity e = new ExpenseEntity();
         e.setGroup(g);
@@ -123,55 +136,69 @@ public class GroupController {
         e.setDate(LocalDate.now());
         e.setParticipantsCsv(joinUniqueCanonical(participantsCsv, canon));
         e.setPayersCsv(joinUniqueCanonical(payersCsv, canon));
-        expenseRepo.save(e);
 
+        expenses.save(e);
         return "redirect:/g/" + slug;
     }
 
     @PostMapping("/g/{slug}/expenses/{id}/delete")
     @Transactional
     public String deleteExpense(@PathVariable String slug, @PathVariable Long id) {
-        expenseRepo.deleteById(id);
+        expenses.deleteById(id);
         return "redirect:/g/" + slug;
     }
 
-    // ============ Helpers ============
+    @PostMapping("/g/{slug}/expenses/{id}/liquidate")
+    @Transactional
+    public String liquidateExpense(@PathVariable String slug, @PathVariable Long id) {
+        expenses.deleteById(id);
+        return "redirect:/g/" + slug;
+    }
+
+    // Helpers
+    private static String slugify(String s) {
+        String n = Normalizer.normalize(s, Normalizer.Form.NFD).replaceAll("\\p{M}+", "");
+        n = n.toLowerCase(Locale.ROOT).replaceAll("[^a-z0-9]+", "-").replaceAll("(^-|-$)", "");
+        return n.isEmpty() ? "grupo" : n;
+    }
+
     private static String norm(String s) {
-        if (s == null) return "";
-        String n = Normalizer.normalize(s, Normalizer.Form.NFD)
-                .replaceAll("\\p{M}+", "");
+        if (s == null)
+            return "";
+        String n = Normalizer.normalize(s, Normalizer.Form.NFD).replaceAll("\\p{M}+", "");
         return n.toLowerCase(Locale.ROOT).trim();
     }
 
     private static Map<String, String> canonicalMap(List<PersonEntity> people) {
         Map<String, String> map = new HashMap<>();
-        for (var p : people) {
+        for (var p : people)
             map.put(norm(p.getName()), p.getName());
-        }
         return map;
     }
 
     private static String joinUniqueCanonical(String csv, Map<String, String> canon) {
-        if (csv == null) return "";
+        if (csv == null)
+            return "";
         var set = new LinkedHashSet<String>();
         for (String token : csv.split(",")) {
             String raw = token.trim();
-            if (raw.isEmpty()) continue;
+            if (raw.isEmpty())
+                continue;
             String key = norm(raw);
             String canonical = canon.getOrDefault(key, raw);
-            if (set.stream().noneMatch(x -> norm(x).equals(norm(canonical)))) {
+            if (set.stream().noneMatch(x -> norm(x).equals(norm(canonical))))
                 set.add(canonical);
-            }
         }
         return String.join(",", set);
     }
 
     private static BigDecimal safeBigDecimal(String s) {
         try {
-            if (s == null) return new BigDecimal("0");
+            if (s == null)
+                return BigDecimal.ZERO;
             return new BigDecimal(s.trim());
         } catch (Exception ex) {
-            return new BigDecimal("0");
+            return BigDecimal.ZERO;
         }
     }
 }

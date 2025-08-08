@@ -1,52 +1,21 @@
 package com.example.spliteasyweb.web;
 
-import com.example.spliteasyweb.model.GroupEntity;
-import com.example.spliteasyweb.repo.ExpenseRepo;
-import com.example.spliteasyweb.repo.GroupRepo;
-import com.example.spliteasyweb.repo.PersonRepo;
+import jakarta.servlet.http.HttpSession;
 import org.springframework.stereotype.Controller;
 import org.springframework.ui.Model;
-import org.springframework.web.bind.annotation.*;
-import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.bind.annotation.GetMapping;
+
+import java.util.List;
+import java.util.Optional;
 
 @Controller
 public class HomeController {
-  private final GroupRepo groups;
-  private final PersonRepo persons;
-  private final ExpenseRepo expenses;
-
-  public HomeController(GroupRepo groups, PersonRepo persons, ExpenseRepo expenses) {
-    this.groups = groups;
-    this.persons = persons;
-    this.expenses = expenses;
-  }
 
   @GetMapping("/")
-  public String home(Model model){
-    model.addAttribute("groups", groups.findAll());
-    model.addAttribute("newGroup", new GroupEntity());
+  public String home(Model model, HttpSession session) {
+    @SuppressWarnings("unchecked")
+    var recent = (List<String>) Optional.ofNullable(session.getAttribute("recentGroups")).orElse(List.of());
+    model.addAttribute("recentGroups", recent);
     return "home";
-  }
-
-  @PostMapping("/groups")
-  public String create(@ModelAttribute GroupEntity g){
-    String slug = g.getName().toLowerCase()
-      .replaceAll("[^a-z0-9 ]","").trim().replace(" ","-");
-    if (slug.isBlank() || groups.existsBySlug(slug)) slug += "-" + (System.currentTimeMillis()%10000);
-    g.setSlug(slug);
-    groups.save(g);
-    return "redirect:/g/" + slug;
-  }
-
-  @PostMapping("/groups/{slug}/delete")
-  @Transactional
-  public String delete(@PathVariable String slug){
-    var g = groups.findBySlug(slug).orElse(null);
-    if (g != null) {
-      expenses.deleteByGroupId(g.getId());
-      persons.deleteByGroupId(g.getId());
-      groups.delete(g);
-    }
-    return "redirect:/";
   }
 }
