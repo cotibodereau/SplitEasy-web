@@ -196,7 +196,9 @@ public class GroupController {
         try {
             if (s == null)
                 return BigDecimal.ZERO;
-            return new BigDecimal(s.trim());
+            s = s.trim().replace(',', '.');
+            if (s.isEmpty()) return BigDecimal.ZERO;
+            return new BigDecimal(s);
         } catch (Exception ex) {
             return BigDecimal.ZERO;
         }
