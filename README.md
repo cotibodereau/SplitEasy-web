@@ -31,8 +31,8 @@ You can:
 ---
 # SplitEasy Web (Español)
 Una aplicación web en Java + Spring Boot para dividir gastos fácilmente con amigos, familiares o compañeros de trabajo.
-Crea un grupo, agrega quién pagó, quién participó y el monto. La app calcula automáticamente quién le debe a quién.
-Puedes:
+Creá un grupo, agregá quién pagó, quién participó y el monto. La app calcula automáticamente quién le debe a quién.
+Podes:
 - Crear múltiples grupos
 - Compartir el enlace del grupo para que otros agreguen gastos en tiempo real
 - Exportar a CSV
@@ -48,7 +48,7 @@ Puedes:
 
 ## Cómo ejecutarlo localmente
 
-1. Clona el repositorio:
+1. Cloná el repositorio:
    ```bash
    git clone https://github.com/cotibodereau/SplitEasy-web.git
    cd SplitEasy-web
