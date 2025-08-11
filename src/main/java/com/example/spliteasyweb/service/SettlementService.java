@@ -15,11 +15,19 @@ public class SettlementService {
       List<String> parts  = parse(e.getParticipantsCsv());
       List<String> payers = parse(e.getPayersCsv()); // puede venir null -> parse lo maneja
       int nParts  = parts.size();
-      int nPayers = Math.max(1, payers.size()); // evitar /0 para el cálculo, aunque si no hay pagadores no se acreditará a nadie
 
       if (nParts == 0) continue;
 
       double amount = (e.getAmount() == null ? 0.0 : e.getAmount().doubleValue());
+      if (amount == 0.0) continue;
+
+      // Fallback: si no hay pagadores explícitos, usar el primer participante
+      if (payers.isEmpty() && !parts.isEmpty()) {
+        payers = List.of(parts.get(0));
+      }
+
+      int nPayers = payers.size(); // ya nunca es 0 por el fallback
+
       double sharePerPart  = amount / nParts;
       double sharePerPayer = amount / nPayers;
 
