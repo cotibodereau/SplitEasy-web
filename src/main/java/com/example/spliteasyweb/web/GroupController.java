@@ -27,7 +27,7 @@ public class GroupController {
     private final SettlementService settlementService;
 
     public GroupController(GroupRepo groups, PersonRepo people, ExpenseRepo expenses,
-            SettlementService settlementService) {
+                           SettlementService settlementService) {
         this.groups = groups;
         this.people = people;
         this.expenses = expenses;
@@ -120,14 +120,22 @@ public class GroupController {
     @PostMapping("/g/{slug}/expenses")
     @Transactional
     public String addExpense(@PathVariable String slug,
-            @RequestParam String title,
-            @RequestParam String amount,
-            @RequestParam(required = false) String participantsCsv,
-            @RequestParam(required = false) String payersCsv) {
+                             @RequestParam String title,
+                             @RequestParam String amount,
+                             // IMPORTANTE: el front manda payers (CSV) y participants (múltiples inputs)
+                             @RequestParam(name = "payers", required = false) String payersCsvRaw,
+                             @RequestParam(name = "participants", required = false) List<String> participantsList) {
         GroupEntity g = groups.findBySlug(slug).orElseThrow();
 
         var ppl = people.findByGroupIdOrderByNameAsc(g.getId());
         Map<String, String> canon = canonicalMap(ppl);
+
+        // Normalizar entradas del front
+        String participantsCsv = "";
+        if (participantsList != null && !participantsList.isEmpty()) {
+            participantsCsv = String.join(",", participantsList);
+        }
+        String payersCsv = payersCsvRaw; // puede venir null o vacío
 
         ExpenseEntity e = new ExpenseEntity();
         e.setGroup(g);
