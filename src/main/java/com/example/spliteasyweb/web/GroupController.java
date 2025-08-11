@@ -8,6 +8,7 @@ import com.example.spliteasyweb.repo.GroupRepo;
 import com.example.spliteasyweb.repo.PersonRepo;
 import com.example.spliteasyweb.service.SettlementService;
 import jakarta.servlet.http.HttpSession;
+import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Controller;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.ui.Model;
@@ -17,6 +18,7 @@ import java.math.BigDecimal;
 import java.text.Normalizer;
 import java.time.LocalDate;
 import java.util.*;
+import java.util.stream.Collectors;
 
 @Controller
 public class GroupController {
@@ -33,9 +35,6 @@ public class GroupController {
         this.expenses = expenses;
         this.settlementService = settlementService;
     }
-
-    // ========= HOME YA NO VA ACÁ ==============
-    // NADA con @GetMapping("/") en este controller
 
     // Crear grupo (desde el home)
     @PostMapping("/groups")
@@ -122,7 +121,7 @@ public class GroupController {
     public String addExpense(@PathVariable String slug,
                              @RequestParam String title,
                              @RequestParam String amount,
-                             // IMPORTANTE: el front manda payers (CSV) y participants (múltiples inputs)
+                             // El front manda payers como CSV y participants como múltiples inputs name=participants
                              @RequestParam(name = "payers", required = false) String payersCsvRaw,
                              @RequestParam(name = "participants", required = false) List<String> participantsList) {
         GroupEntity g = groups.findBySlug(slug).orElseThrow();
@@ -130,12 +129,8 @@ public class GroupController {
         var ppl = people.findByGroupIdOrderByNameAsc(g.getId());
         Map<String, String> canon = canonicalMap(ppl);
 
-        // Normalizar entradas del front
-        String participantsCsv = "";
-        if (participantsList != null && !participantsList.isEmpty()) {
-            participantsCsv = String.join(",", participantsList);
-        }
-        String payersCsv = payersCsvRaw; // puede venir null o vacío
+        String participantsCsv = (participantsList == null) ? "" : String.join(",", participantsList);
+        String payersCsv = payersCsvRaw; // puede ser null/empty
 
         ExpenseEntity e = new ExpenseEntity();
         e.setGroup(g);
@@ -161,6 +156,94 @@ public class GroupController {
     public String liquidateExpense(@PathVariable String slug, @PathVariable Long id) {
         expenses.deleteById(id);
         return "redirect:/g/" + slug;
+    }
+
+    // Export CSV (3 endpoints)
+
+    @GetMapping(value = "/g/{slug}/export/expenses.csv", produces = "text/csv")
+    @ResponseBody
+    public ResponseEntity<String> exportExpensesCsv(@PathVariable String slug) {
+        GroupEntity g = groups.findBySlug(slug).orElseThrow();
+        var exps = expenses.findByGroupIdOrderByDateDescIdDesc(g.getId());
+
+        StringBuilder sb = new StringBuilder();
+        // encabezado
+        sb.append("Fecha,Título,Pagó,Participantes,Monto\n");
+        for (var e : exps) {
+            String date = e.getDate() == null ? "" : e.getDate().toString();
+            String title = csv(e.getTitle());
+            String payers = csv(csvListPretty(e.getPayersCsv()));
+            String participants = csv(csvListPretty(e.getParticipantsCsv()));
+            String amount = e.getAmount() == null ? "0.00" : String.format(java.util.Locale.US, "%.2f", e.getAmount());
+
+            sb.append(date).append(",")
+              .append("\"").append(title).append("\",")
+              .append("\"").append(payers).append("\",")
+              .append("\"").append(participants).append("\",")
+              .append(amount).append("\n");
+        }
+
+        return ResponseEntity.ok()
+                .header("Content-Disposition", "attachment; filename=\"expenses-" + slug + ".csv\"")
+                .body(sb.toString());
+    }
+
+    @GetMapping(value = "/g/{slug}/export/balances.csv", produces = "text/csv")
+    @ResponseBody
+    public ResponseEntity<String> exportBalancesCsv(@PathVariable String slug) {
+        GroupEntity g = groups.findBySlug(slug).orElseThrow();
+        var exps = expenses.findByGroupIdOrderByDateDescIdDesc(g.getId());
+        var balances = settlementService.balances(exps);
+
+        StringBuilder sb = new StringBuilder();
+        sb.append("Persona,Balance\n");
+        for (var e : balances.entrySet()) {
+            String person = csv(e.getKey());
+            String val = String.format(java.util.Locale.US, "%.2f", e.getValue());
+            sb.append("\"").append(person).append("\",").append(val).append("\n");
+        }
+
+        return ResponseEntity.ok()
+                .header("Content-Disposition", "attachment; filename=\"balances-" + slug + ".csv\"")
+                .body(sb.toString());
+    }
+
+    @GetMapping(value = "/g/{slug}/export/transfers.csv", produces = "text/csv")
+    @ResponseBody
+    public ResponseEntity<String> exportTransfersCsv(@PathVariable String slug) {
+        GroupEntity g = groups.findBySlug(slug).orElseThrow();
+        var exps = expenses.findByGroupIdOrderByDateDescIdDesc(g.getId());
+        var balances = settlementService.balances(exps);
+        var txs = settlementService.settle(balances);
+
+        StringBuilder sb = new StringBuilder();
+        sb.append("De,Para,Monto\n");
+        for (var t : txs) {
+            String from = csv(t.from());
+            String to = csv(t.to());
+            String amount = String.format(java.util.Locale.US, "%.2f", t.amount());
+            sb.append("\"").append(from).append("\",")
+              .append("\"").append(to).append("\",")
+              .append(amount).append("\n");
+        }
+
+        return ResponseEntity.ok()
+                .header("Content-Disposition", "attachment; filename=\"transfers-" + slug + ".csv\"")
+                .body(sb.toString());
+    }
+
+    // Helpers CSV
+    private static String csv(String s) {
+        if (s == null) return "";
+        return s.replace("\"", "\"\"");
+    }
+
+    private static String csvListPretty(String csv) {
+        if (csv == null || csv.isBlank()) return "";
+        return Arrays.stream(csv.split(","))
+                .map(String::trim)
+                .filter(x -> !x.isEmpty())
+                .collect(Collectors.joining(", "));
     }
 
     // Helpers
