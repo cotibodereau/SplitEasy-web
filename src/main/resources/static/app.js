@@ -115,3 +115,65 @@ function completeMultiWithTab(input) {
         }
     });
 })();
+
+// Exportar CSV + pequeños fixes UX
+(() => {
+    // Si alguien teclea coma en inputs numéricos, convertir a punto
+    document.addEventListener('input', (e) => {
+        const el = e.target;
+        if (el && el.tagName === 'INPUT' && el.type === 'number' && typeof el.value === 'string') {
+            if (el.value.includes(',')) el.value = el.value.replace(',', '.');
+        }
+    }, { passive: true });
+
+    function tableToCsv(table) {
+        if (!table) return '';
+        const rows = [...table.querySelectorAll('tr')];
+        return rows.map(tr => {
+            const cells = [...tr.querySelectorAll('th,td')].map(td => {
+                const t = (td.textContent || '').trim().replace(/"/g, '""');
+                return `"${t}"`;
+            });
+            return cells.join(',');
+        }).join('\n');
+    }
+
+    function downloadCsv(filename, csv) {
+        if (!csv) return;
+        const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        URL.revokeObjectURL(url);
+    }
+
+    function setupCsvExport({ tableSelector, buttonSelector, filename }) {
+        const btn = document.querySelector(buttonSelector);
+        const table = document.querySelector(tableSelector);
+        if (!btn || !table) return; // tolerante a vistas sin esos elementos
+
+        btn.type = btn.type || 'button'; // evita que sea submit por accidente
+        btn.addEventListener('click', (e) => {
+            e.preventDefault();
+            const csv = tableToCsv(table);
+            downloadCsv(filename, csv);
+        });
+    }
+
+    document.addEventListener('DOMContentLoaded', () => {
+        setupCsvExport({
+            tableSelector: '#expensesTable',
+            buttonSelector: '#exportExpensesCsv',
+            filename: 'gastos.csv'
+        });
+        setupCsvExport({
+            tableSelector: '#balancesTable',
+            buttonSelector: '#exportBalancesCsv',
+            filename: 'balances.csv'
+        });
+    });
+})();
